@@ -93,7 +93,7 @@ test('listItems works without filter', async () => {
   const client = makeClient(fetchFn);
   await client.listItems('42');
   const { opts } = getCapture();
-  assert.deepEqual(JSON.parse(opts.body), {});
+  assert.equal(opts.body, undefined);
 });
 
 test('getItem GETs single entry', async () => {

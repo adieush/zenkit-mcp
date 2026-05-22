@@ -23,9 +23,13 @@ export function makeClient(fetchFn = nodeFetch) {
     return res.json();
   }
 
+  async function fetchWorkspacesWithLists() {
+    return request('GET', '/users/me/workspacesWithLists');
+  }
+
   return {
     async listWorkspaces() {
-      const workspaces = await request('GET', '/users/me/workspacesWithLists');
+      const workspaces = await fetchWorkspacesWithLists();
       return workspaces.map(ws => ({
         id: ws.id,
         name: ws.name,
@@ -35,14 +39,14 @@ export function makeClient(fetchFn = nodeFetch) {
     },
 
     async listCollections(workspaceId) {
-      const workspaces = await request('GET', '/users/me/workspacesWithLists');
+      const workspaces = await fetchWorkspacesWithLists();
       const ws = workspaces.find(w => String(w.id) === String(workspaceId));
       if (!ws) throw new Error(`Workspace ${workspaceId} not found`);
       return (ws.lists || []).map(l => ({ id: l.id, name: l.name, shortId: l.shortId }));
     },
 
     async listItems(listId, filter) {
-      const body = filter ? { filter } : {};
+      const body = filter ? { filter } : undefined;
       const result = await request('POST', `/lists/${listId}/entries/filter/list`, body);
       return result.listEntries ?? result;
     },
@@ -61,6 +65,7 @@ export function makeClient(fetchFn = nodeFetch) {
   };
 }
 
+// key is read lazily per request in getHeaders()
 const defaultClient = makeClient();
 export const { listWorkspaces, listCollections, listItems, getItem, createItem, updateItem } =
   defaultClient;
