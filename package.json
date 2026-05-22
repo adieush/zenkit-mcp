@@ -1,0 +1,14 @@
+{
+  "name": "zenkit-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "node-fetch": "^3.3.2"
+  }
+}
