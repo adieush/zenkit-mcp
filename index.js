@@ -1,7 +1,8 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { listWorkspaces, listCollections, listItems, getItem, createItem, updateItem, listWorkspaceMembers, getCurrentUser, listMyItems } from './zenkit.js';
+import nodeFetch from 'node-fetch';
+import { makeClient, listWorkspaces, listItems, getItem, createItem, updateItem, listWorkspaceMembers, getCurrentUser, listMyItems, getListElements, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, LOCAL_CONFIG_PATH } from './zenkit.js';
 
 const server = new Server(
   { name: 'zenkit', version: '1.0.0' },
@@ -118,6 +119,63 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['listId'],
       },
     },
+    {
+      name: 'init_zenkit',
+      description: 'Initialize ~/.claude/zenkit.local.json with API key and user profile. Run once to set up.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          apiKey: { type: 'string', description: 'Zenkit API key (optional if ZENKIT_API_KEY env var is set)' },
+        },
+      },
+    },
+    {
+      name: 'init_project',
+      description: 'Create .zenkit config in a project directory, linking it to a Zenkit collection',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string', description: 'Absolute path to the project root' },
+          listId: { type: 'string', description: 'Zenkit collection (list) ID to associate with this project' },
+        },
+        required: ['projectPath', 'listId'],
+      },
+    },
+    {
+      name: 'get_project_collection',
+      description: 'Get the Zenkit collection linked to a project (reads .zenkit from project root)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string', description: 'Absolute path to the project root' },
+        },
+        required: ['projectPath'],
+      },
+    },
+    {
+      name: 'set_project_collection',
+      description: 'Update the Zenkit collection for a project (use after deploying a batch and moving to a new collection)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string', description: 'Absolute path to the project root' },
+          listId: { type: 'string', description: 'New Zenkit collection (list) ID' },
+        },
+        required: ['projectPath', 'listId'],
+      },
+    },
+    {
+      name: 'create_project_item',
+      description: 'Create a ticket in the project\'s linked Zenkit collection, auto-assigned to the current user',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string', description: 'Absolute path to the project root' },
+          title: { type: 'string', description: 'Ticket title' },
+        },
+        required: ['projectPath', 'title'],
+      },
+    },
   ],
 }));
 
@@ -134,6 +192,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'update_item':            result = await updateItem(args.listId, args.entryId, args.fields); break;
       case 'list_workspace_members': result = await listWorkspaceMembers(args.workspaceId); break;
       case 'list_my_items':          result = await listMyItems(args.listId); break;
+
+      case 'init_zenkit': {
+        const local = readLocalConfig();
+        const apiKey = args.apiKey || local.apiKey || process.env.ZENKIT_API_KEY;
+        if (!apiKey) throw new Error('Provide apiKey argument or set ZENKIT_API_KEY env var');
+        const res = await nodeFetch('https://zenkit.com/api/v1/auth/currentuser', {
+          headers: { 'Content-Type': 'application/json', 'Zenkit-API-Key': apiKey },
+        });
+        if (!res.ok) throw new Error(`Zenkit auth failed: ${res.status}`);
+        const user = await res.json();
+        writeLocalConfig({ ...local, apiKey, userId: user.id, displayname: user.displayname, username: user.username });
+        result = { ok: true, message: `Initialized as ${user.displayname} (${user.username})`, userId: user.id };
+        break;
+      }
+
+      case 'init_project': {
+        const existing = readProjectConfig(args.projectPath);
+        if (existing) {
+          result = { ok: false, message: `.zenkit already exists in ${args.projectPath}`, current: existing };
+          break;
+        }
+        // find collection name by iterating workspaces
+        const workspaces = await listWorkspaces();
+        let listName = args.listId;
+        for (const ws of workspaces) {
+          const client = makeClient();
+          const cols = await client.listCollections(String(ws.id));
+          const found = cols.find(c => String(c.id) === String(args.listId));
+          if (found) { listName = found.name; break; }
+        }
+        writeProjectConfig(args.projectPath, { listId: args.listId, listName });
+        result = { ok: true, message: `Created .zenkit in ${args.projectPath}`, listId: args.listId, listName };
+        break;
+      }
+
+      case 'get_project_collection': {
+        const cfg = readProjectConfig(args.projectPath);
+        if (!cfg) throw new Error(`No .zenkit found in ${args.projectPath}. Run init_project first.`);
+        result = cfg;
+        break;
+      }
+
+      case 'set_project_collection': {
+        const cfg = readProjectConfig(args.projectPath) ?? {};
+        writeProjectConfig(args.projectPath, { ...cfg, listId: args.listId });
+        result = { ok: true, message: `Updated .zenkit in ${args.projectPath}`, listId: args.listId };
+        break;
+      }
+
+      case 'create_project_item': {
+        const cfg = readProjectConfig(args.projectPath);
+        if (!cfg) throw new Error(`No .zenkit found in ${args.projectPath}. Run init_project first.`);
+        const local = readLocalConfig();
+        const userId = local.userId;
+        if (!userId) throw new Error('User not initialized. Run init_zenkit first.');
+        const elements = await getListElements(cfg.listId);
+        const personsEl = elements.find(e => e.elementcategory === 14);
+        const fields = { displayString: args.title };
+        if (personsEl) fields[`${personsEl.uuid}_persons`] = [userId];
+        result = await createItem(cfg.listId, fields);
+        break;
+      }
+
       default: throw new Error(`Unknown tool: ${name}`);
     }
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };

@@ -1,11 +1,40 @@
 import nodeFetch from 'node-fetch';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 const BASE_URL = 'https://zenkit.com/api/v1';
+export const LOCAL_CONFIG_PATH = join(homedir(), '.claude', 'zenkit.local.json');
 
-export function makeClient(fetchFn = nodeFetch) {
+export function readLocalConfig(configPath = LOCAL_CONFIG_PATH) {
+  try {
+    return JSON.parse(readFileSync(configPath, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+export function writeLocalConfig(data, configPath = LOCAL_CONFIG_PATH) {
+  writeFileSync(configPath, JSON.stringify(data, null, 2));
+}
+
+export function readProjectConfig(projectPath) {
+  try {
+    return JSON.parse(readFileSync(join(projectPath, '.zenkit'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export function writeProjectConfig(projectPath, data) {
+  writeFileSync(join(projectPath, '.zenkit'), JSON.stringify(data, null, 2));
+}
+
+export function makeClient(fetchFn = nodeFetch, configPath = LOCAL_CONFIG_PATH) {
   function getHeaders() {
-    const key = process.env.ZENKIT_API_KEY;
-    if (!key) throw new Error('ZENKIT_API_KEY environment variable is not set');
+    const local = readLocalConfig(configPath);
+    const key = local.apiKey || process.env.ZENKIT_API_KEY;
+    if (!key) throw new Error('No API key found. Set apiKey in ~/.claude/zenkit.local.json or ZENKIT_API_KEY env var');
     return {
       'Content-Type': 'application/json',
       'Zenkit-API-Key': key,
@@ -67,20 +96,27 @@ export function makeClient(fetchFn = nodeFetch) {
       return request('GET', `/workspaces/${workspaceId}/users`);
     },
 
+    async getListElements(listId) {
+      return request('GET', `/lists/${listId}/elements`);
+    },
+
     async getCurrentUser() {
+      const local = readLocalConfig(configPath);
+      if (local.userId) {
+        return { id: local.userId, displayname: local.displayname, username: local.username };
+      }
       const raw = await request('GET', '/auth/currentuser');
       const { id, shortId, uuid, displayname, fullname, initials, username, timezone } = raw;
       return { id, shortId, uuid, displayname, fullname, initials, username, timezone };
     },
 
     async listMyItems(listId) {
-      const [me, items] = await Promise.all([
-        methods.getCurrentUser(),
-        methods.listItems(listId),
-      ]);
+      const local = readLocalConfig(configPath);
+      const userId = local.userId ?? (await methods.getCurrentUser()).id;
+      const items = await methods.listItems(listId);
       return items.filter(item =>
         Object.keys(item).some(
-          k => k.endsWith('_persons') && Array.isArray(item[k]) && item[k].includes(me.id)
+          k => k.endsWith('_persons') && Array.isArray(item[k]) && item[k].includes(userId)
         )
       );
     },
@@ -92,5 +128,5 @@ export function makeClient(fetchFn = nodeFetch) {
 const defaultClient = makeClient();
 export const {
   listWorkspaces, listCollections, listItems, getItem, createItem, updateItem,
-  listWorkspaceMembers, getCurrentUser, listMyItems,
+  listWorkspaceMembers, getCurrentUser, listMyItems, getListElements,
 } = defaultClient;

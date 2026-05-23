@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeClient } from './zenkit.js';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { makeClient, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig } from './zenkit.js';
 
 // Helper: create a mock fetch that returns a fixed JSON response
 function mockFetch(responseBody, status = 200) {
@@ -210,4 +213,99 @@ test('listMyItems filters items by current user ID in _persons fields', async ()
   assert.equal(result.length, 2);
   assert.equal(result[0].displayString, 'mine');
   assert.equal(result[1].displayString, 'also mine');
+});
+
+// --- File I/O helpers ---
+
+test('readLocalConfig returns {} when file not found', () => {
+  const result = readLocalConfig('/nonexistent/path/zenkit.local.json');
+  assert.deepEqual(result, {});
+});
+
+test('readLocalConfig returns parsed config from file', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'zenkit-'));
+  const p = join(tmp, 'zenkit.local.json');
+  writeFileSync(p, JSON.stringify({ userId: 42, displayname: 'Alice' }));
+  const result = readLocalConfig(p);
+  assert.equal(result.userId, 42);
+  assert.equal(result.displayname, 'Alice');
+});
+
+test('writeLocalConfig writes JSON to file', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'zenkit-'));
+  const p = join(tmp, 'zenkit.local.json');
+  writeLocalConfig({ userId: 99, apiKey: 'k' }, p);
+  const result = JSON.parse(readFileSync(p, 'utf8'));
+  assert.equal(result.userId, 99);
+  assert.equal(result.apiKey, 'k');
+});
+
+test('readProjectConfig returns null when no .zenkit exists', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'zenkit-'));
+  assert.equal(readProjectConfig(tmp), null);
+});
+
+test('readProjectConfig returns parsed config', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'zenkit-'));
+  writeFileSync(join(tmp, '.zenkit'), JSON.stringify({ listId: '123', listName: 'Test' }));
+  const result = readProjectConfig(tmp);
+  assert.equal(result.listId, '123');
+  assert.equal(result.listName, 'Test');
+});
+
+test('writeProjectConfig writes .zenkit file', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'zenkit-'));
+  writeProjectConfig(tmp, { listId: '456', listName: 'My List' });
+  const result = JSON.parse(readFileSync(join(tmp, '.zenkit'), 'utf8'));
+  assert.equal(result.listId, '456');
+});
+
+test('getHeaders reads apiKey from local config file', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'zenkit-'));
+  const configPath = join(tmp, 'zenkit.local.json');
+  writeFileSync(configPath, JSON.stringify({ apiKey: 'from-file' }));
+  delete process.env.ZENKIT_API_KEY;
+  const { fetchFn, getCapture } = captureFetch([]);
+  const client = makeClient(fetchFn, configPath);
+  await client.listWorkspaces();
+  assert.equal(getCapture().opts.headers['Zenkit-API-Key'], 'from-file');
+  process.env.ZENKIT_API_KEY = 'test-key'; // restore for subsequent tests
+});
+
+test('getCurrentUser returns cached profile from local config without API call', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'zenkit-'));
+  const configPath = join(tmp, 'zenkit.local.json');
+  writeFileSync(configPath, JSON.stringify({ apiKey: 'k', userId: 42, displayname: 'Cached', username: 'cached' }));
+  let fetchCalled = false;
+  const fetchFn = async () => { fetchCalled = true; return {}; };
+  const client = makeClient(fetchFn, configPath);
+  const result = await client.getCurrentUser();
+  assert.equal(fetchCalled, false);
+  assert.equal(result.id, 42);
+  assert.equal(result.displayname, 'Cached');
+});
+
+test('listMyItems uses cached userId from local config without extra API call', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'zenkit-'));
+  const configPath = join(tmp, 'zenkit.local.json');
+  writeFileSync(configPath, JSON.stringify({ apiKey: 'k', userId: 7 }));
+  const entries = [
+    { id: 1, displayString: 'mine', 'x_persons': [7] },
+    { id: 2, displayString: 'not mine', 'x_persons': [5] },
+  ];
+  const client = makeClient(mockFetch({ listEntries: entries }), configPath);
+  const result = await client.listMyItems('42');
+  assert.equal(result.length, 1);
+  assert.equal(result[0].displayString, 'mine');
+});
+
+test('getListElements GETs elements for a list', async () => {
+  const elements = [{ uuid: 'abc', name: 'Assigned To', elementcategory: 14 }];
+  const { fetchFn, getCapture } = captureFetch(elements);
+  process.env.ZENKIT_API_KEY = 'test-key';
+  const client = makeClient(fetchFn);
+  const result = await client.getListElements('42');
+  assert.equal(getCapture().url, 'https://zenkit.com/api/v1/lists/42/elements');
+  assert.equal(result.length, 1);
+  assert.equal(result[0].elementcategory, 14);
 });
