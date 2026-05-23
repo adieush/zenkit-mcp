@@ -167,3 +167,47 @@ test('listWorkspaceMembers GETs workspace users', async () => {
   assert.equal(result.length, 2);
   assert.equal(result[0].username, 'alice');
 });
+
+test('getCurrentUser strips sensitive fields and returns profile', async () => {
+  const raw = {
+    id: 42, displayname: 'Alice', username: 'alice', initials: 'A',
+    fullname: 'Alice Smith', timezone: 'UTC', shortId: 'abc',
+    api_key: 'secret-key', settings: { lots: 'of stuff' }, tokens: {}, emails: [],
+  };
+  const { fetchFn, getCapture } = captureFetch(raw);
+  process.env.ZENKIT_API_KEY = 'test-key';
+  const client = makeClient(fetchFn);
+  const result = await client.getCurrentUser();
+  const { url, opts } = getCapture();
+  assert.equal(url, 'https://zenkit.com/api/v1/auth/currentuser');
+  assert.equal(opts.method, 'GET');
+  assert.equal(result.id, 42);
+  assert.equal(result.displayname, 'Alice');
+  assert.equal(result.api_key, undefined);
+  assert.equal(result.settings, undefined);
+  assert.equal(result.tokens, undefined);
+  assert.equal(result.emails, undefined);
+});
+
+test('listMyItems filters items by current user ID in _persons fields', async () => {
+  const meRaw = { id: 99, displayname: 'Me', username: 'me', initials: 'M', fullname: 'Me', timezone: 'UTC', shortId: 'x' };
+  const entries = [
+    { id: 1, displayString: 'mine',     'abc_persons': [99, 5] },
+    { id: 2, displayString: 'not mine', 'abc_persons': [5] },
+    { id: 3, displayString: 'also mine','abc_persons': [99] },
+    { id: 4, displayString: 'no field' },
+  ];
+
+  let callCount = 0;
+  const fetchFn = async (url, opts) => {
+    callCount++;
+    const body = url.includes('currentuser') ? meRaw : { listEntries: entries };
+    return { ok: true, status: 200, json: async () => body, text: async () => '' };
+  };
+  process.env.ZENKIT_API_KEY = 'test-key';
+  const client = makeClient(fetchFn);
+  const result = await client.listMyItems('42');
+  assert.equal(result.length, 2);
+  assert.equal(result[0].displayString, 'mine');
+  assert.equal(result[1].displayString, 'also mine');
+});

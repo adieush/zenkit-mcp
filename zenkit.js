@@ -27,7 +27,7 @@ export function makeClient(fetchFn = nodeFetch) {
     return request('GET', '/users/me/workspacesWithLists');
   }
 
-  return {
+  const methods = {
     async listWorkspaces() {
       const workspaces = await fetchWorkspacesWithLists();
       return workspaces.map(ws => ({
@@ -66,10 +66,31 @@ export function makeClient(fetchFn = nodeFetch) {
     async listWorkspaceMembers(workspaceId) {
       return request('GET', `/workspaces/${workspaceId}/users`);
     },
+
+    async getCurrentUser() {
+      const raw = await request('GET', '/auth/currentuser');
+      const { id, shortId, uuid, displayname, fullname, initials, username, timezone } = raw;
+      return { id, shortId, uuid, displayname, fullname, initials, username, timezone };
+    },
+
+    async listMyItems(listId) {
+      const [me, items] = await Promise.all([
+        methods.getCurrentUser(),
+        methods.listItems(listId),
+      ]);
+      return items.filter(item =>
+        Object.keys(item).some(
+          k => k.endsWith('_persons') && Array.isArray(item[k]) && item[k].includes(me.id)
+        )
+      );
+    },
   };
+  return methods;
 }
 
 // key is read lazily per request in getHeaders()
 const defaultClient = makeClient();
-export const { listWorkspaces, listCollections, listItems, getItem, createItem, updateItem, listWorkspaceMembers } =
-  defaultClient;
+export const {
+  listWorkspaces, listCollections, listItems, getItem, createItem, updateItem,
+  listWorkspaceMembers, getCurrentUser, listMyItems,
+} = defaultClient;

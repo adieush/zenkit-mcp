@@ -1,12 +1,33 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { listWorkspaces, listCollections, listItems, getItem, createItem, updateItem, listWorkspaceMembers } from './zenkit.js';
+import { CallToolRequestSchema, ListToolsRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { listWorkspaces, listCollections, listItems, getItem, createItem, updateItem, listWorkspaceMembers, getCurrentUser, listMyItems } from './zenkit.js';
 
 const server = new Server(
   { name: 'zenkit', version: '1.0.0' },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, resources: {} } }
 );
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+  resources: [{
+    uri: 'zenkit://me',
+    name: 'My Zenkit Profile',
+    description: 'Current user identity — who is using this MCP server (based on ZENKIT_API_KEY)',
+    mimeType: 'application/json',
+  }],
+}));
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  if (request.params.uri !== 'zenkit://me') throw new Error(`Unknown resource: ${request.params.uri}`);
+  const user = await getCurrentUser();
+  return {
+    contents: [{
+      uri: 'zenkit://me',
+      mimeType: 'application/json',
+      text: JSON.stringify(user, null, 2),
+    }],
+  };
+});
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -86,6 +107,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['workspaceId'],
       },
     },
+    {
+      name: 'list_my_items',
+      description: 'List items assigned to the current user (identified by ZENKIT_API_KEY)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'Collection (list) ID' },
+        },
+        required: ['listId'],
+      },
+    },
   ],
 }));
 
@@ -101,6 +133,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'create_item':       result = await createItem(args.listId, args.fields); break;
       case 'update_item':            result = await updateItem(args.listId, args.entryId, args.fields); break;
       case 'list_workspace_members': result = await listWorkspaceMembers(args.workspaceId); break;
+      case 'list_my_items':          result = await listMyItems(args.listId); break;
       default: throw new Error(`Unknown tool: ${name}`);
     }
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
