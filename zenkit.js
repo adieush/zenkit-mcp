@@ -62,10 +62,14 @@ export function makeClient(fetchFn = nodeFetch) {
     async updateItem(listId, entryId, fields) {
       return request('PUT', `/lists/${listId}/entries/${entryId}`, fields);
     },
+
+    async listWorkspaceMembers(workspaceId) {
+      return request('GET', `/workspaces/${workspaceId}/users`);
+    },
   };
 }
 
 // key is read lazily per request in getHeaders()
 const defaultClient = makeClient();
-export const { listWorkspaces, listCollections, listItems, getItem, createItem, updateItem } =
+export const { listWorkspaces, listCollections, listItems, getItem, createItem, updateItem, listWorkspaceMembers } =
   defaultClient;

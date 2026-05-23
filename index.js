@@ -1,7 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { listWorkspaces, listCollections, listItems, getItem, createItem, updateItem } from './zenkit.js';
+import { listWorkspaces, listCollections, listItems, getItem, createItem, updateItem, listWorkspaceMembers } from './zenkit.js';
 
 const server = new Server(
   { name: 'zenkit', version: '1.0.0' },
@@ -75,6 +75,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['listId', 'entryId', 'fields'],
       },
     },
+    {
+      name: 'list_workspace_members',
+      description: 'List all members of a workspace',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          workspaceId: { type: 'string', description: 'Workspace ID (numeric)' },
+        },
+        required: ['workspaceId'],
+      },
+    },
   ],
 }));
 
@@ -88,7 +99,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'list_items':        result = await listItems(args.listId, args.filter); break;
       case 'get_item':          result = await getItem(args.listId, args.entryId); break;
       case 'create_item':       result = await createItem(args.listId, args.fields); break;
-      case 'update_item':       result = await updateItem(args.listId, args.entryId, args.fields); break;
+      case 'update_item':            result = await updateItem(args.listId, args.entryId, args.fields); break;
+      case 'list_workspace_members': result = await listWorkspaceMembers(args.workspaceId); break;
       default: throw new Error(`Unknown tool: ${name}`);
     }
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };

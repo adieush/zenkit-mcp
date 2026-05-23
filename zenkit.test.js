@@ -151,3 +151,19 @@ test('missing API key throws before fetch', async () => {
     /ZENKIT_API_KEY/
   );
 });
+
+test('listWorkspaceMembers GETs workspace users', async () => {
+  const users = [
+    { id: 1, username: 'alice', displayname: 'Alice' },
+    { id: 2, username: 'bob', displayname: 'Bob' },
+  ];
+  const { fetchFn, getCapture } = captureFetch(users);
+  process.env.ZENKIT_API_KEY = 'test-key';
+  const client = makeClient(fetchFn);
+  const result = await client.listWorkspaceMembers('10');
+  const { url, opts } = getCapture();
+  assert.equal(url, 'https://zenkit.com/api/v1/workspaces/10/users');
+  assert.equal(opts.method, 'GET');
+  assert.equal(result.length, 2);
+  assert.equal(result[0].username, 'alice');
+});
