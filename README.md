@@ -4,9 +4,11 @@ Zenkit MCP server for Claude Code — read and manage tickets without leaving yo
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Clone into `~/.claude`
 
 ```bash
+git clone git@github.com:adieush/zenkit-mcp.git ~/.claude/zenkit-mcp
+cd ~/.claude/zenkit-mcp
 npm install
 ```
 
@@ -36,7 +38,7 @@ This saves your key and profile to `~/.claude/zenkit.local.json`:
 ### 3. Register with Claude Code
 
 ```bash
-claude mcp add --transport stdio zenkit -- node /path/to/zenkit-mcp/index.js
+claude mcp add --transport stdio zenkit -- node ~/.claude/zenkit-mcp/index.js
 ```
 
 ## Project setup
@@ -44,7 +46,7 @@ claude mcp add --transport stdio zenkit -- node /path/to/zenkit-mcp/index.js
 Link a project folder to a Zenkit collection by running this in Claude Code from your project directory:
 
 ```
-init_project /path/to/project listId
+init_project /absolute/path/to/project listId
 ```
 
 This creates a `.zenkit` file in the project root (commit it to git):
