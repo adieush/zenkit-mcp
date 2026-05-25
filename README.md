@@ -14,21 +14,20 @@ npm install
 
 ### 2. Initialize your profile
 
-Get your API key from **Zenkit → Profile → Integrations → API key**, then in Claude Code:
+Copy the template and fill in your API key (get it from **Zenkit → Profile → Integrations → API key**):
+
+```bash
+cp ~/.claude/mcps/zenkit-mcp/zenkit.local.json.example ~/.claude/mcps/zenkit-mcp/zenkit.local.json
+# open the file and paste your key into the "apiKey" field
+```
+
+Then in Claude Code, run `init_zenkit` with no arguments — it reads the key from the file and saves your user profile:
 
 ```
-init_zenkit with apiKey "your-api-key"
+init_zenkit
 ```
 
-This creates `~/.claude/mcps/zenkit-mcp/zenkit.local.json` (gitignored):
-```json
-{
-  "apiKey": "your-key",
-  "userId": 123456,
-  "displayname": "Your Name",
-  "username": "yourusername"
-}
-```
+`zenkit.local.json` is gitignored and stays local to this machine.
 
 ### 3. Register with Claude Code
 

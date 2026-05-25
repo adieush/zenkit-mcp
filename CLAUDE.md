@@ -19,11 +19,16 @@ When a user installs this server, complete these steps in order:
 3. **Create the local config**
 
    Check if `zenkit.local.json` exists in `~/.claude/mcps/zenkit-mcp/`.
-   If not, tell the user:
-   > "To connect Zenkit, I need your API key. Get it from **Zenkit → Profile → Integrations → API key**."
+   If not:
+   1. Tell the user to copy the template and fill in their API key:
+      ```bash
+      cp ~/.claude/mcps/zenkit-mcp/zenkit.local.json.example ~/.claude/mcps/zenkit-mcp/zenkit.local.json
+      # then open the file and paste the key into the "apiKey" field
+      # API key is at: Zenkit → Profile → Integrations → API key
+      ```
+   2. Once the user confirms the file is saved, call `init_zenkit` with no arguments — it reads the key from the file and fills in userId, displayname, and username automatically.
 
-   Once they provide it, call `init_zenkit` with their key — it creates `zenkit.local.json` automatically.
-   This file is gitignored and stays local to this machine.
+   Never ask the user to paste their API key into chat. Always use the file.
 
 ## Per-Project Setup
 
