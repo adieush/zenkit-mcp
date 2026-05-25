@@ -1,10 +1,10 @@
 import nodeFetch from 'node-fetch';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const BASE_URL = 'https://zenkit.com/api/v1';
-export const LOCAL_CONFIG_PATH = join(homedir(), '.claude', 'zenkit.local.json');
+export const LOCAL_CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), 'zenkit.local.json');
 
 export function readLocalConfig(configPath = LOCAL_CONFIG_PATH) {
   try {

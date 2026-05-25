@@ -14,18 +14,13 @@ npm install
 
 ### 2. Initialize your profile
 
-Create `~/.claude/zenkit.local.json` with your API key and user profile:
+Get your API key from **Zenkit → Profile → Integrations → API key**, then in Claude Code:
 
-```bash
-# Get your API key from Zenkit → Profile → Integrations → API key
-```
-
-Then in Claude Code:
 ```
 init_zenkit with apiKey "your-api-key"
 ```
 
-This saves your key and profile to `~/.claude/zenkit.local.json`:
+This creates `~/.claude/mcps/zenkit-mcp/zenkit.local.json` (gitignored):
 ```json
 {
   "apiKey": "your-key",
@@ -66,7 +61,7 @@ set_project_collection /path/to/project newListId
 
 | Tool | Description |
 |------|-------------|
-| `init_zenkit` | Save API key and user profile to `~/.claude/zenkit.local.json` |
+| `init_zenkit` | Save API key and user profile to `zenkit.local.json` next to the server |
 | `init_project` | Link a project directory to a Zenkit collection |
 | `get_project_collection` | Get the collection linked to a project |
 | `set_project_collection` | Update the collection (e.g. after deploying a batch) |
@@ -84,7 +79,8 @@ set_project_collection /path/to/project newListId
 
 | File | Description |
 |------|-------------|
-| `~/.claude/zenkit.local.json` | Personal: API key + user profile. Never commit. |
+| `~/.claude/mcps/zenkit-mcp/zenkit.local.json` | Personal: API key + user profile. Gitignored, never commit. |
+| `~/.claude/mcps/zenkit-mcp/zenkit.local.json.example` | Template — shows the expected structure. |
 | `.zenkit` | Per-project: current collection ID. Commit to git. |
 
 ## Usage examples
