@@ -2,7 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import nodeFetch from 'node-fetch';
-import { makeClient, listWorkspaces, listItems, getItem, createItem, updateItem, listWorkspaceMembers, getCurrentUser, listMyItems, getListElements, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, LOCAL_CONFIG_PATH } from './zenkit.js';
+import { makeClient, listWorkspaces, listItems, getItem, createItem, updateItem, deleteItem, listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, LOCAL_CONFIG_PATH } from './zenkit.js';
 
 const server = new Server(
   { name: 'zenkit', version: '1.0.0' },
@@ -85,6 +85,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'delete_item',
+      description: 'Delete an item from a collection',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'Collection (list) ID' },
+          entryId: { type: 'string', description: 'Entry ID' },
+        },
+        required: ['listId', 'entryId'],
+      },
+    },
+    {
       name: 'update_item',
       description: 'Update fields or status of an existing item',
       inputSchema: {
@@ -106,6 +118,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           workspaceId: { type: 'string', description: 'Workspace ID (numeric)' },
         },
         required: ['workspaceId'],
+      },
+    },
+    {
+      name: 'list_collection_members',
+      description: 'List all members who have access to a collection (more complete than workspace members)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'Collection (list) ID' },
+        },
+        required: ['listId'],
       },
     },
     {
@@ -189,8 +212,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'list_items':        result = await listItems(args.listId, args.filter); break;
       case 'get_item':          result = await getItem(args.listId, args.entryId); break;
       case 'create_item':       result = await createItem(args.listId, args.fields); break;
-      case 'update_item':            result = await updateItem(args.listId, args.entryId, args.fields); break;
-      case 'list_workspace_members': result = await listWorkspaceMembers(args.workspaceId); break;
+      case 'update_item':  result = await updateItem(args.listId, args.entryId, args.fields); break;
+      case 'delete_item':  result = await deleteItem(args.listId, args.entryId); break;
+      case 'list_workspace_members':   result = await listWorkspaceMembers(args.workspaceId); break;
+      case 'list_collection_members': result = await listCollectionMembers(args.listId); break;
       case 'list_my_items':          result = await listMyItems(args.listId); break;
 
       case 'init_zenkit': {

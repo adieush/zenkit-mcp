@@ -92,8 +92,16 @@ export function makeClient(fetchFn = nodeFetch, configPath = LOCAL_CONFIG_PATH) 
       return request('PUT', `/lists/${listId}/entries/${entryId}`, fields);
     },
 
+    async deleteItem(listId, entryId) {
+      return request('DELETE', `/lists/${listId}/entries/${entryId}`);
+    },
+
     async listWorkspaceMembers(workspaceId) {
       return request('GET', `/workspaces/${workspaceId}/users`);
+    },
+
+    async listCollectionMembers(listId) {
+      return request('GET', `/lists/${listId}/users`);
     },
 
     async getListElements(listId) {
@@ -127,6 +135,6 @@ export function makeClient(fetchFn = nodeFetch, configPath = LOCAL_CONFIG_PATH) 
 // key is read lazily per request in getHeaders()
 const defaultClient = makeClient();
 export const {
-  listWorkspaces, listCollections, listItems, getItem, createItem, updateItem,
-  listWorkspaceMembers, getCurrentUser, listMyItems, getListElements,
+  listWorkspaces, listCollections, listItems, getItem, createItem, updateItem, deleteItem,
+  listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements,
 } = defaultClient;
