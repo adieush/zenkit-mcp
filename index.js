@@ -4,6 +4,18 @@ import { CallToolRequestSchema, ListToolsRequestSchema, ListResourcesRequestSche
 import nodeFetch from 'node-fetch';
 import { makeClient, listWorkspaces, listItems, getItem, createItem, updateItem, deleteItem, listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, LOCAL_CONFIG_PATH } from './zenkit.js';
 
+async function resolveCollection(listIdOrShortId) {
+  const workspaces = await listWorkspaces();
+  for (const ws of workspaces) {
+    const cols = await makeClient().listCollections(String(ws.id));
+    const found = cols.find(c =>
+      String(c.id) === String(listIdOrShortId) || c.shortId === listIdOrShortId
+    );
+    if (found) return found; // { id (numeric), name, shortId }
+  }
+  return null;
+}
+
 async function fetchCollectionMeta(listId) {
   const elements = await getListElements(listId);
   const stageEl = elements.find(e =>
@@ -150,6 +162,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'get_list_elements',
+      description: 'Get all field definitions (elements) for a collection — useful to inspect structure, find stage/assignee/label field UUIDs',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'Collection (list) ID' },
+        },
+        required: ['listId'],
+      },
+    },
+    {
       name: 'list_my_items',
       description: 'List items assigned to the current user (identified by ZENKIT_API_KEY)',
       inputSchema: {
@@ -235,6 +258,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'delete_item':  result = await deleteItem(args.listId, args.entryId); break;
       case 'list_workspace_members':   result = await listWorkspaceMembers(args.workspaceId); break;
       case 'list_collection_members': result = await listCollectionMembers(args.listId); break;
+      case 'get_list_elements':       result = await getListElements(args.listId); break;
       case 'list_my_items':          result = await listMyItems(args.listId); break;
 
       case 'init_zenkit': {
@@ -257,16 +281,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           result = { ok: false, message: `.zenkit already exists in ${args.projectPath}`, current: existing };
           break;
         }
-        const workspaces = await listWorkspaces();
-        let listName = args.listId;
-        for (const ws of workspaces) {
-          const cols = await makeClient().listCollections(String(ws.id));
-          const found = cols.find(c => String(c.id) === String(args.listId));
-          if (found) { listName = found.name; break; }
-        }
-        const meta = await fetchCollectionMeta(args.listId);
-        writeProjectConfig(args.projectPath, { listId: args.listId, listName, ...meta });
-        result = { ok: true, message: `Created .zenkit in ${args.projectPath}`, listId: args.listId, listName, stages: meta.stages };
+        const col = await resolveCollection(args.listId);
+        if (!col) throw new Error(`Collection "${args.listId}" not found in any workspace`);
+        const meta = await fetchCollectionMeta(String(col.id));
+        writeProjectConfig(args.projectPath, { listId: String(col.id), listName: col.name, ...meta });
+        result = { ok: true, message: `Created .zenkit in ${args.projectPath}`, listId: String(col.id), listName: col.name, stages: meta.stages };
         break;
       }
 
@@ -279,16 +298,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'set_project_collection': {
         const cfg = readProjectConfig(args.projectPath) ?? {};
-        const workspaces = await listWorkspaces();
-        let listName = args.listId;
-        for (const ws of workspaces) {
-          const cols = await makeClient().listCollections(String(ws.id));
-          const found = cols.find(c => String(c.id) === String(args.listId));
-          if (found) { listName = found.name; break; }
-        }
-        const meta = await fetchCollectionMeta(args.listId);
-        writeProjectConfig(args.projectPath, { ...cfg, listId: args.listId, listName, ...meta });
-        result = { ok: true, message: `Updated .zenkit in ${args.projectPath}`, listId: args.listId, listName, stages: meta.stages };
+        const col = await resolveCollection(args.listId);
+        if (!col) throw new Error(`Collection "${args.listId}" not found in any workspace`);
+        const meta = await fetchCollectionMeta(String(col.id));
+        writeProjectConfig(args.projectPath, { ...cfg, listId: String(col.id), listName: col.name, ...meta });
+        result = { ok: true, message: `Updated .zenkit in ${args.projectPath}`, listId: String(col.id), listName: col.name, stages: meta.stages };
         break;
       }
 
