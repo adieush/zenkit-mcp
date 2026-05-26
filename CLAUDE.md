@@ -13,8 +13,10 @@ When a user installs this server, complete these steps in order:
 
 2. **Register with Claude Code**
    ```bash
-   claude mcp add --transport stdio zenkit -- node ~/.claude/mcps/zenkit-mcp/index.js
+   claude mcp add --scope user --transport stdio zenkit -- node ~/.claude/mcps/zenkit-mcp/index.js
    ```
+
+   > `--scope user` сохраняет сервер глобально (`~/.claude.json`), а не в текущем проекте. Без этого флага MCP пропадает при смене проекта.
 
 3. **Create the local config**
 
