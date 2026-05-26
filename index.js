@@ -174,7 +174,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'list_my_items',
-      description: 'List tickets assigned to the current user in a collection. Current user is identified automatically from zenkit.local.json — no need to look up userId. For the current project\'s listId use get_project_collection.',
+      description: 'List tickets assigned to the current user in a collection. Current user is identified automatically from zenkit.local.json — do NOT call list_workspace_members or list_collection_members to find userId. For the current project\'s listId read .zenkit with get_project_collection instead of calling list_workspaces + list_collections.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -228,7 +228,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'create_project_item',
-      description: 'High-level tool to create a ticket in the current project. Reads listId from .zenkit, auto-assigns to the current user (userId from zenkit.local.json — no member lookup needed), and optionally sets the stage by name. Always prefer this over create_item for project tickets.',
+      description: 'High-level tool to create a ticket in the current project. This is a SINGLE-CALL operation — do NOT call list_workspaces, list_collections, or get_project_collection first. Everything is read automatically: listId and stages from .zenkit, userId from zenkit.local.json. Just call this tool with projectPath, title, and optionally stage.',
       inputSchema: {
         type: 'object',
         properties: {
