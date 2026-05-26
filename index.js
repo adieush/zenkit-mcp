@@ -24,7 +24,9 @@ async function fetchCollectionMeta(listId) {
       .some(c => c.resourceRole === 'todo' || c.resourceRole === 'done')
   );
   const personsEl = elements.find(e => e.elementcategory === 14);
+  const titleEl = elements.find(e => e.elementcategory === 1 && e.isPrimary);
   return {
+    titleElementUuid: titleEl?.uuid ?? null,
     stageElementUuid: stageEl?.uuid ?? null,
     personsElementUuid: personsEl?.uuid ?? null,
     stages: stageEl
@@ -104,12 +106,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'create_item',
-      description: 'Low-level: create a ticket with raw field values. Requires knowing field UUIDs. For project tickets prefer create_project_item which handles assignee and stage automatically.',
+      description: 'Low-level: create a ticket with raw field values. Requires knowing field UUIDs. For project tickets prefer create_project_item which handles title, assignee and stage automatically. WARNING: "displayString" is a computed read-only field — writing to it has no effect. Use the primary field UUID (isPrimary: true from get_list_elements) for the ticket title.',
       inputSchema: {
         type: 'object',
         properties: {
           listId: { type: 'string', description: 'Collection (list) ID' },
-          fields: { type: 'object', description: 'Field values. Title: { "displayString": "..." }. Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }' },
+          fields: { type: 'object', description: 'Field values. Title: { "{titleUuid}": "..." } where titleUuid has isPrimary:true in get_list_elements. Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }' },
         },
         required: ['listId', 'fields'],
       },
@@ -134,7 +136,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           listId: { type: 'string', description: 'Collection (list) ID' },
           entryId: { type: 'string', description: 'Entry (ticket) ID' },
-          fields: { type: 'object', description: 'Fields to update. Title: { "displayString": "..." }. Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }' },
+          fields: { type: 'object', description: 'Fields to update. Title: { "{titleUuid}": "..." } — use titleElementUuid from .zenkit or isPrimary field from get_list_elements. Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }. WARNING: "displayString" is read-only.' },
         },
         required: ['listId', 'entryId', 'fields'],
       },
@@ -310,7 +312,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const local = readLocalConfig();
         const userId = local.userId;
         if (!userId) throw new Error('User not initialized. Run init_zenkit first.');
-        const fields = { displayString: args.title };
+        const fields = cfg.titleElementUuid
+          ? { [cfg.titleElementUuid]: args.title }
+          : { displayString: args.title };
         if (cfg.personsElementUuid) {
           fields[`${cfg.personsElementUuid}_persons`] = [userId];
         } else {
