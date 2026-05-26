@@ -64,84 +64,84 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: 'list_workspaces',
-      description: 'List all Zenkit workspaces',
+      description: 'List all Zenkit workspaces the current user has access to. Use this to discover workspaceIds needed for list_collections.',
       inputSchema: { type: 'object', properties: {} },
     },
     {
       name: 'list_collections',
-      description: 'List collections (lists) inside a workspace',
+      description: 'List all collections (sprints/boards) inside a workspace. Returns id, name, shortId. Use to find the listId for a project. Accepts numeric workspaceId from list_workspaces.',
       inputSchema: {
         type: 'object',
         properties: {
-          workspaceId: { type: 'string', description: 'Workspace ID (numeric)' },
+          workspaceId: { type: 'string', description: 'Workspace ID (numeric) from list_workspaces' },
         },
         required: ['workspaceId'],
       },
     },
     {
       name: 'list_items',
-      description: 'List items (entries) in a collection, optionally filtered',
+      description: 'List all tickets (entries) in a collection. Returns raw field data including UUID-keyed fields. For the current user\'s tickets use list_my_items instead. For the current project\'s listId use get_project_collection.',
       inputSchema: {
         type: 'object',
         properties: {
           listId: { type: 'string', description: 'Collection (list) ID' },
-          filter: { type: 'object', description: 'Optional Zenkit filter object, e.g. { "searchValue": "bug" }' },
+          filter: { type: 'object', description: 'Optional Zenkit filter, e.g. { "searchValue": "bug" }' },
         },
         required: ['listId'],
       },
     },
     {
       name: 'get_item',
-      description: 'Get full details of a single item',
+      description: 'Get full details of a single ticket including all field values. Use when you need description, comments, or specific field data for one item.',
       inputSchema: {
         type: 'object',
         properties: {
           listId: { type: 'string', description: 'Collection (list) ID' },
-          entryId: { type: 'string', description: 'Entry ID' },
+          entryId: { type: 'string', description: 'Entry (ticket) ID' },
         },
         required: ['listId', 'entryId'],
       },
     },
     {
       name: 'create_item',
-      description: 'Create a new item in a collection',
+      description: 'Low-level: create a ticket with raw field values. Requires knowing field UUIDs. For project tickets prefer create_project_item which handles assignee and stage automatically.',
       inputSchema: {
         type: 'object',
         properties: {
           listId: { type: 'string', description: 'Collection (list) ID' },
-          fields: { type: 'object', description: 'Field values, e.g. { "displayString": "Fix login bug" }' },
+          fields: { type: 'object', description: 'Field values. Title: { "displayString": "..." }. Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }' },
         },
         required: ['listId', 'fields'],
       },
     },
     {
       name: 'delete_item',
-      description: 'Delete an item from a collection',
+      description: 'Permanently delete a ticket. Requires listId and entryId. Always confirm with the user before deleting.',
       inputSchema: {
         type: 'object',
         properties: {
           listId: { type: 'string', description: 'Collection (list) ID' },
-          entryId: { type: 'string', description: 'Entry ID' },
+          entryId: { type: 'string', description: 'Entry (ticket) ID' },
         },
         required: ['listId', 'entryId'],
       },
     },
     {
       name: 'update_item',
-      description: 'Update fields or status of an existing item',
+      description: 'Update any fields of an existing ticket. Field names follow the pattern "{elementUuid}_persons" for assignees or "{elementUuid}_categories" for stages. Use get_project_collection to get cached elementUuids from .zenkit instead of calling get_list_elements every time.',
       inputSchema: {
         type: 'object',
         properties: {
           listId: { type: 'string', description: 'Collection (list) ID' },
-          entryId: { type: 'string', description: 'Entry ID' },
-          fields: { type: 'object', description: 'Fields to update, e.g. { "displayString": "Updated title" }' },
+          entryId: { type: 'string', description: 'Entry (ticket) ID' },
+          fields: { type: 'object', description: 'Fields to update. Title: { "displayString": "..." }. Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }' },
         },
         required: ['listId', 'entryId', 'fields'],
       },
     },
     {
       name: 'list_workspace_members',
-      description: 'List all members of a workspace',
+      description: 'List members of a workspace. May return fewer members than list_collection_members. Use list_collection_members for a more complete list. IMPORTANT: never call this to find the current user — current user\'s id, displayname and username are stored in zenkit.local.json (set by init_zenkit).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -152,7 +152,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'list_collection_members',
-      description: 'List all members who have access to a collection (more complete than workspace members)',
+      description: 'List all members who have access to a collection. More complete than list_workspace_members. Use when you need to find a teammate\'s userId to assign a ticket. IMPORTANT: never call this to find the current user — current user\'s id is in zenkit.local.json.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -163,7 +163,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'get_list_elements',
-      description: 'Get all field definitions (elements) for a collection — useful to inspect structure, find stage/assignee/label field UUIDs',
+      description: 'Get all field definitions for a collection: names, UUIDs, types (elementcategory), and allowed values. Use to discover field UUIDs when .zenkit cache is missing or incomplete. elementcategory 14 = assignee (persons), 6 = stage/labels/tags.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -174,7 +174,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'list_my_items',
-      description: 'List items assigned to the current user (identified by ZENKIT_API_KEY)',
+      description: 'List tickets assigned to the current user in a collection. Current user is identified automatically from zenkit.local.json — no need to look up userId. For the current project\'s listId use get_project_collection.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -185,29 +185,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'init_zenkit',
-      description: 'Initialize ~/.claude/zenkit.local.json with API key and user profile. Run once to set up.',
+      description: 'One-time setup: reads apiKey from zenkit.local.json in the server directory, calls Zenkit API to fetch user profile, and saves userId, displayname, username back to zenkit.local.json. Must be run once before using any other tools. Do NOT pass apiKey as argument — user should put it in zenkit.local.json manually first.',
       inputSchema: {
         type: 'object',
-        properties: {
-          apiKey: { type: 'string', description: 'Zenkit API key (optional if ZENKIT_API_KEY env var is set)' },
-        },
+        properties: {},
       },
     },
     {
       name: 'init_project',
-      description: 'Create .zenkit config in a project directory, linking it to a Zenkit collection',
+      description: 'Link a project directory to a Zenkit collection by creating a .zenkit file. Accepts numeric listId or shortId. Saves listName, stageElementUuid, personsElementUuid, and stages list to .zenkit so they are available without extra API calls. Run once per project. Commit the resulting .zenkit to git.',
       inputSchema: {
         type: 'object',
         properties: {
           projectPath: { type: 'string', description: 'Absolute path to the project root' },
-          listId: { type: 'string', description: 'Zenkit collection (list) ID to associate with this project' },
+          listId: { type: 'string', description: 'Zenkit collection ID (numeric) or shortId' },
         },
         required: ['projectPath', 'listId'],
       },
     },
     {
       name: 'get_project_collection',
-      description: 'Get the Zenkit collection linked to a project (reads .zenkit from project root)',
+      description: 'Read the .zenkit file for a project. Returns listId, listName, stageElementUuid, personsElementUuid, and stages. Use this before create_item or update_item to get cached field UUIDs instead of calling get_list_elements.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -218,7 +216,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'set_project_collection',
-      description: 'Update the Zenkit collection for a project (use after deploying a batch and moving to a new collection)',
+      description: 'Switch the project to a new Zenkit collection — run after deploying a sprint and moving to the next one. Accepts numeric listId or shortId. Updates listName, stages, and field UUIDs in .zenkit automatically.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -230,13 +228,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'create_project_item',
-      description: 'Create a ticket in the project\'s linked Zenkit collection, auto-assigned to the current user',
+      description: 'High-level tool to create a ticket in the current project. Reads listId from .zenkit, auto-assigns to the current user (userId from zenkit.local.json — no member lookup needed), and optionally sets the stage by name. Always prefer this over create_item for project tickets.',
       inputSchema: {
         type: 'object',
         properties: {
           projectPath: { type: 'string', description: 'Absolute path to the project root' },
           title: { type: 'string', description: 'Ticket title' },
-          stage: { type: 'string', description: 'Stage name to place the ticket in, e.g. "In Progress". Must match a stage in .zenkit.' },
+          stage: { type: 'string', description: 'Stage name, e.g. "In Progress", "To-Do". Must match a name in .zenkit stages list. If omitted, ticket is created without a stage.' },
         },
         required: ['projectPath', 'title'],
       },
