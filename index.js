@@ -4,6 +4,24 @@ import { CallToolRequestSchema, ListToolsRequestSchema, ListResourcesRequestSche
 import nodeFetch from 'node-fetch';
 import { makeClient, listWorkspaces, listItems, getItem, createItem, updateItem, deleteItem, listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, LOCAL_CONFIG_PATH } from './zenkit.js';
 
+async function fetchCollectionMeta(listId) {
+  const elements = await getListElements(listId);
+  const stageEl = elements.find(e =>
+    e.elementcategory === 6 &&
+    (e.predefinedCategories || e.elementData?.predefinedCategories || [])
+      .some(c => c.resourceRole === 'todo' || c.resourceRole === 'done')
+  );
+  const personsEl = elements.find(e => e.elementcategory === 14);
+  return {
+    stageElementUuid: stageEl?.uuid ?? null,
+    personsElementUuid: personsEl?.uuid ?? null,
+    stages: stageEl
+      ? (stageEl.predefinedCategories || stageEl.elementData?.predefinedCategories || [])
+          .map(c => ({ id: c.id, name: c.name }))
+      : [],
+  };
+}
+
 const server = new Server(
   { name: 'zenkit', version: '1.0.0' },
   { capabilities: { tools: {}, resources: {} } }
@@ -195,6 +213,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           projectPath: { type: 'string', description: 'Absolute path to the project root' },
           title: { type: 'string', description: 'Ticket title' },
+          stage: { type: 'string', description: 'Stage name to place the ticket in, e.g. "In Progress". Must match a stage in .zenkit.' },
         },
         required: ['projectPath', 'title'],
       },
@@ -238,17 +257,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           result = { ok: false, message: `.zenkit already exists in ${args.projectPath}`, current: existing };
           break;
         }
-        // find collection name by iterating workspaces
         const workspaces = await listWorkspaces();
         let listName = args.listId;
         for (const ws of workspaces) {
-          const client = makeClient();
-          const cols = await client.listCollections(String(ws.id));
+          const cols = await makeClient().listCollections(String(ws.id));
           const found = cols.find(c => String(c.id) === String(args.listId));
           if (found) { listName = found.name; break; }
         }
-        writeProjectConfig(args.projectPath, { listId: args.listId, listName });
-        result = { ok: true, message: `Created .zenkit in ${args.projectPath}`, listId: args.listId, listName };
+        const meta = await fetchCollectionMeta(args.listId);
+        writeProjectConfig(args.projectPath, { listId: args.listId, listName, ...meta });
+        result = { ok: true, message: `Created .zenkit in ${args.projectPath}`, listId: args.listId, listName, stages: meta.stages };
         break;
       }
 
@@ -261,8 +279,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'set_project_collection': {
         const cfg = readProjectConfig(args.projectPath) ?? {};
-        writeProjectConfig(args.projectPath, { ...cfg, listId: args.listId });
-        result = { ok: true, message: `Updated .zenkit in ${args.projectPath}`, listId: args.listId };
+        const workspaces = await listWorkspaces();
+        let listName = args.listId;
+        for (const ws of workspaces) {
+          const cols = await makeClient().listCollections(String(ws.id));
+          const found = cols.find(c => String(c.id) === String(args.listId));
+          if (found) { listName = found.name; break; }
+        }
+        const meta = await fetchCollectionMeta(args.listId);
+        writeProjectConfig(args.projectPath, { ...cfg, listId: args.listId, listName, ...meta });
+        result = { ok: true, message: `Updated .zenkit in ${args.projectPath}`, listId: args.listId, listName, stages: meta.stages };
         break;
       }
 
@@ -272,10 +298,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const local = readLocalConfig();
         const userId = local.userId;
         if (!userId) throw new Error('User not initialized. Run init_zenkit first.');
-        const elements = await getListElements(cfg.listId);
-        const personsEl = elements.find(e => e.elementcategory === 14);
         const fields = { displayString: args.title };
-        if (personsEl) fields[`${personsEl.uuid}_persons`] = [userId];
+        if (cfg.personsElementUuid) {
+          fields[`${cfg.personsElementUuid}_persons`] = [userId];
+        } else {
+          const elements = await getListElements(cfg.listId);
+          const personsEl = elements.find(e => e.elementcategory === 14);
+          if (personsEl) fields[`${personsEl.uuid}_persons`] = [userId];
+        }
+        if (args.stage) {
+          if (!cfg.stageElementUuid || !cfg.stages?.length) {
+            throw new Error('Stage info missing from .zenkit. Re-run init_project or set_project_collection to refresh.');
+          }
+          const stage = cfg.stages.find(s => s.name.toLowerCase() === args.stage.toLowerCase());
+          if (!stage) throw new Error(`Stage "${args.stage}" not found. Available: ${cfg.stages.map(s => s.name).join(', ')}`);
+          fields[`${cfg.stageElementUuid}_categories`] = [stage.id];
+        }
         result = await createItem(cfg.listId, fields);
         break;
       }
