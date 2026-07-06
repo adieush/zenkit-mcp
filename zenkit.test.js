@@ -30,12 +30,18 @@ function captureFetch(responseBody, status = 200) {
   return { fetchFn, getCapture: () => captured };
 }
 
+// Isolate tests from the developer's real zenkit.local.json. Once init_zenkit writes
+// apiKey/userId there, getHeaders/getCurrentUser/listMyItems pick them up and break
+// tests that assert on env-based auth or the mocked currentuser id. A nonexistent path
+// makes readLocalConfig return {}, so tests depend only on their own mocks.
+const NO_LOCAL_CONFIG = '/nonexistent/zenkit.local.json';
+
 test('listWorkspaces returns mapped workspace list', async () => {
   const raw = [
     { id: 1, name: 'Work', shortId: 'abc', lists: [{}] },
     { id: 2, name: 'Personal', shortId: 'def', lists: [] },
   ];
-  const client = makeClient(mockFetch(raw));
+  const client = makeClient(mockFetch(raw), NO_LOCAL_CONFIG);
   process.env.ZENKIT_API_KEY = 'test-key';
   const result = await client.listWorkspaces();
   assert.equal(result.length, 2);
@@ -47,7 +53,7 @@ test('listWorkspaces returns mapped workspace list', async () => {
 test('listWorkspaces sends correct auth header', async () => {
   const { fetchFn, getCapture } = captureFetch([]);
   process.env.ZENKIT_API_KEY = 'my-secret';
-  const client = makeClient(fetchFn);
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   await client.listWorkspaces();
   const { url, opts } = getCapture();
   assert.equal(url, 'https://zenkit.com/api/v1/users/me/workspacesWithLists');
@@ -60,7 +66,7 @@ test('listCollections filters lists for given workspaceId', async () => {
     { id: 10, name: 'WS1', shortId: 'ws1', lists: [{ id: 100, name: 'Backlog', shortId: 'bl' }] },
     { id: 20, name: 'WS2', shortId: 'ws2', lists: [] },
   ];
-  const client = makeClient(mockFetch(raw));
+  const client = makeClient(mockFetch(raw), NO_LOCAL_CONFIG);
   process.env.ZENKIT_API_KEY = 'test-key';
   const result = await client.listCollections('10');
   assert.equal(result.length, 1);
@@ -69,7 +75,7 @@ test('listCollections filters lists for given workspaceId', async () => {
 });
 
 test('listCollections throws if workspace not found', async () => {
-  const client = makeClient(mockFetch([]));
+  const client = makeClient(mockFetch([]), NO_LOCAL_CONFIG);
   process.env.ZENKIT_API_KEY = 'test-key';
   await assert.rejects(
     () => client.listCollections('999'),
@@ -81,7 +87,7 @@ test('listItems POSTs to entries/filter/list', async () => {
   const entries = [{ id: 1 }, { id: 2 }];
   const { fetchFn, getCapture } = captureFetch({ listEntries: entries });
   process.env.ZENKIT_API_KEY = 'test-key';
-  const client = makeClient(fetchFn);
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   const result = await client.listItems('42', { searchValue: 'bug' });
   const { url, opts } = getCapture();
   assert.equal(url, 'https://zenkit.com/api/v1/lists/42/entries/filter/list');
@@ -93,7 +99,7 @@ test('listItems POSTs to entries/filter/list', async () => {
 test('listItems works without filter', async () => {
   const { fetchFn, getCapture } = captureFetch({ listEntries: [] });
   process.env.ZENKIT_API_KEY = 'test-key';
-  const client = makeClient(fetchFn);
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   await client.listItems('42');
   const { opts } = getCapture();
   assert.equal(opts.body, undefined);
@@ -103,7 +109,7 @@ test('getItem GETs single entry', async () => {
   const entry = { id: 5, displayString: 'Fix login bug' };
   const { fetchFn, getCapture } = captureFetch(entry);
   process.env.ZENKIT_API_KEY = 'test-key';
-  const client = makeClient(fetchFn);
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   const result = await client.getItem('42', '5');
   const { url, opts } = getCapture();
   assert.equal(url, 'https://zenkit.com/api/v1/lists/42/entries/5');
@@ -115,7 +121,7 @@ test('createItem POSTs fields to entries endpoint', async () => {
   const created = { id: 99, displayString: 'New task' };
   const { fetchFn, getCapture } = captureFetch(created);
   process.env.ZENKIT_API_KEY = 'test-key';
-  const client = makeClient(fetchFn);
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   const result = await client.createItem('42', { displayString: 'New task' });
   const { url, opts } = getCapture();
   assert.equal(url, 'https://zenkit.com/api/v1/lists/42/entries');
@@ -128,7 +134,7 @@ test('updateItem PUTs fields to entries/{id} endpoint', async () => {
   const updated = { id: 5, displayString: 'Updated' };
   const { fetchFn, getCapture } = captureFetch(updated);
   process.env.ZENKIT_API_KEY = 'test-key';
-  const client = makeClient(fetchFn);
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   const result = await client.updateItem('42', '5', { displayString: 'Updated' });
   const { url, opts } = getCapture();
   assert.equal(url, 'https://zenkit.com/api/v1/lists/42/entries/5');
@@ -138,7 +144,7 @@ test('updateItem PUTs fields to entries/{id} endpoint', async () => {
 });
 
 test('API error throws with status code in message', async () => {
-  const client = makeClient(mockFetch({ message: 'Not found' }, 404));
+  const client = makeClient(mockFetch({ message: 'Not found' }, 404), NO_LOCAL_CONFIG);
   process.env.ZENKIT_API_KEY = 'test-key';
   await assert.rejects(
     () => client.getItem('42', '999'),
@@ -148,7 +154,7 @@ test('API error throws with status code in message', async () => {
 
 test('missing API key throws before fetch', async () => {
   delete process.env.ZENKIT_API_KEY;
-  const client = makeClient(mockFetch({}));
+  const client = makeClient(mockFetch({}), NO_LOCAL_CONFIG);
   await assert.rejects(
     () => client.listWorkspaces(),
     /ZENKIT_API_KEY/
@@ -162,7 +168,7 @@ test('listWorkspaceMembers GETs workspace users', async () => {
   ];
   const { fetchFn, getCapture } = captureFetch(users);
   process.env.ZENKIT_API_KEY = 'test-key';
-  const client = makeClient(fetchFn);
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   const result = await client.listWorkspaceMembers('10');
   const { url, opts } = getCapture();
   assert.equal(url, 'https://zenkit.com/api/v1/workspaces/10/users');
@@ -179,7 +185,9 @@ test('getCurrentUser strips sensitive fields and returns profile', async () => {
   };
   const { fetchFn, getCapture } = captureFetch(raw);
   process.env.ZENKIT_API_KEY = 'test-key';
-  const client = makeClient(fetchFn);
+  // Isolate from the real zenkit.local.json — once init_zenkit writes a userId there,
+  // getCurrentUser short-circuits on the cache and never hits the mocked fetch.
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   const result = await client.getCurrentUser();
   const { url, opts } = getCapture();
   assert.equal(url, 'https://zenkit.com/api/v1/auth/currentuser');
@@ -208,7 +216,9 @@ test('listMyItems filters items by current user ID in _persons fields', async ()
     return { ok: true, status: 200, json: async () => body, text: async () => '' };
   };
   process.env.ZENKIT_API_KEY = 'test-key';
-  const client = makeClient(fetchFn);
+  // Isolate from the real zenkit.local.json so the mocked currentuser id (99) is used
+  // instead of the cached userId written by init_zenkit.
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   const result = await client.listMyItems('42');
   assert.equal(result.length, 2);
   assert.equal(result[0].displayString, 'mine');
@@ -303,7 +313,7 @@ test('getListElements GETs elements for a list', async () => {
   const elements = [{ uuid: 'abc', name: 'Assigned To', elementcategory: 14 }];
   const { fetchFn, getCapture } = captureFetch(elements);
   process.env.ZENKIT_API_KEY = 'test-key';
-  const client = makeClient(fetchFn);
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
   const result = await client.getListElements('42');
   assert.equal(getCapture().url, 'https://zenkit.com/api/v1/lists/42/elements');
   assert.equal(result.length, 1);

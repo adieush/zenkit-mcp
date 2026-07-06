@@ -111,7 +111,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: 'object',
         properties: {
           listId: { type: 'string', description: 'Collection (list) ID' },
-          fields: { type: 'object', description: 'Field values. Title: { "{titleUuid}": "..." } where titleUuid has isPrimary:true in get_list_elements. Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }' },
+          fields: { type: 'object', description: 'Field values. Title: { "{titleUuid}_text": "..." } — note the _text suffix; the bare "{titleUuid}" is rejected by the Zenkit API with 400. titleUuid has isPrimary:true in get_list_elements (or titleElementUuid in .zenkit). Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }' },
         },
         required: ['listId', 'fields'],
       },
@@ -136,7 +136,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           listId: { type: 'string', description: 'Collection (list) ID' },
           entryId: { type: 'string', description: 'Entry (ticket) ID' },
-          fields: { type: 'object', description: 'Fields to update. Title: { "{titleUuid}": "..." } — use titleElementUuid from .zenkit or isPrimary field from get_list_elements. Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }. WARNING: "displayString" is read-only.' },
+          fields: { type: 'object', description: 'Fields to update. Title: { "{titleUuid}_text": "..." } — note the _text suffix; the bare "{titleUuid}" is rejected by the Zenkit API with 400. Use titleElementUuid from .zenkit or isPrimary field from get_list_elements. Assignee: { "{personsUuid}_persons": [userId] }. Stage: { "{stageUuid}_categories": [stageId] }. WARNING: "displayString" is read-only.' },
         },
         required: ['listId', 'entryId', 'fields'],
       },
@@ -313,7 +313,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const userId = local.userId;
         if (!userId) throw new Error('User not initialized. Run init_zenkit first.');
         const fields = cfg.titleElementUuid
-          ? { [cfg.titleElementUuid]: args.title }
+          ? { [`${cfg.titleElementUuid}_text`]: args.title }
           : { displayString: args.title };
         if (cfg.personsElementUuid) {
           fields[`${cfg.personsElementUuid}_persons`] = [userId];
