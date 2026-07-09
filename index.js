@@ -2,7 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import nodeFetch from 'node-fetch';
-import { makeClient, listWorkspaces, listItems, getItem, createItem, updateItem, deleteItem, listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, LOCAL_CONFIG_PATH } from './zenkit.js';
+import { makeClient, listWorkspaces, listItems, getItem, createItem, updateItem, deleteItem, listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements, addComment, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, LOCAL_CONFIG_PATH } from './zenkit.js';
 
 async function resolveCollection(listIdOrShortId) {
   const workspaces = await listWorkspaces();
@@ -229,6 +229,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'add_comment',
+      description: 'Add a comment to a ticket. Posts a plain-text/markdown message as an activity on the entry — shows up in the ticket\'s comment thread, visible to the whole team.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'Collection (list) ID' },
+          entryId: { type: 'string', description: 'Entry (ticket) ID' },
+          message: { type: 'string', description: 'Comment text' },
+        },
+        required: ['listId', 'entryId', 'message'],
+      },
+    },
+    {
       name: 'create_project_item',
       description: 'High-level tool to create a ticket in the current project. This is a SINGLE-CALL operation — do NOT call list_workspaces, list_collections, or get_project_collection first. Everything is read automatically: listId and stages from .zenkit, userId from zenkit.local.json. Just call this tool with projectPath, title, and optionally stage.',
       inputSchema: {
@@ -260,6 +273,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'list_collection_members': result = await listCollectionMembers(args.listId); break;
       case 'get_list_elements':       result = await getListElements(args.listId); break;
       case 'list_my_items':          result = await listMyItems(args.listId); break;
+      case 'add_comment':            result = await addComment(args.listId, args.entryId, args.message); break;
 
       case 'init_zenkit': {
         const local = readLocalConfig();
