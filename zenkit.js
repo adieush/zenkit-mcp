@@ -112,6 +112,10 @@ export function makeClient(fetchFn = nodeFetch, configPath = LOCAL_CONFIG_PATH) 
       return request('POST', `/users/me/lists/${listId}/entries/${entryId}/activities`, { message });
     },
 
+    async deleteComment(listId, commentId) {
+      return request('DELETE', `/lists/${listId}/activities/${commentId}`);
+    },
+
     async getCurrentUser() {
       const local = readLocalConfig(configPath);
       if (local.userId) {
@@ -140,5 +144,5 @@ export function makeClient(fetchFn = nodeFetch, configPath = LOCAL_CONFIG_PATH) 
 const defaultClient = makeClient();
 export const {
   listWorkspaces, listCollections, listItems, getItem, createItem, updateItem, deleteItem,
-  listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements, addComment,
+  listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements, addComment, deleteComment,
 } = defaultClient;
