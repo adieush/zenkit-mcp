@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { makeClient, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig } from './zenkit.js';
+import { makeClient, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, guessMimetype } from './zenkit.js';
 
 // Helper: create a mock fetch that returns a fixed JSON response
 function mockFetch(responseBody, status = 200) {
@@ -223,6 +223,82 @@ test('listMyItems filters items by current user ID in _persons fields', async ()
   assert.equal(result.length, 2);
   assert.equal(result[0].displayString, 'mine');
   assert.equal(result[1].displayString, 'also mine');
+});
+
+// --- Attachments ---
+
+test('guessMimetype maps common extensions and falls back to octet-stream', () => {
+  assert.equal(guessMimetype('report.md'), 'text/markdown');
+  assert.equal(guessMimetype('a.b.TXT'), 'text/plain');
+  assert.equal(guessMimetype('image.PNG'), 'image/png');
+  assert.equal(guessMimetype('archive.bin'), 'application/octet-stream');
+  assert.equal(guessMimetype('noext'), 'application/octet-stream');
+});
+
+test('uploadFile POSTs multipart body to the element files endpoint', async () => {
+  const created = { id: 555, uuid: 'file-uuid', fileName: 'report.md', size: 4, mimetype: 'text/markdown' };
+  const { fetchFn, getCapture } = captureFetch(created);
+  process.env.ZENKIT_API_KEY = 'test-key';
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
+  const result = await client.uploadFile('42', '7', { buffer: Buffer.from('data'), fileName: 'report.md' });
+  const { url, opts } = getCapture();
+  assert.equal(url, 'https://zenkit.com/api/v1/lists/42/elements/7/files');
+  assert.equal(opts.method, 'POST');
+  assert.equal(opts.headers['Zenkit-API-Key'], 'test-key');
+  assert.match(opts.headers['Content-Type'], /^multipart\/form-data; boundary=----zenkitmcp/);
+  const bodyStr = opts.body.toString();
+  assert.match(bodyStr, /name="file"; filename="report\.md"/);
+  assert.match(bodyStr, /Content-Type: text\/markdown/);
+  assert.match(bodyStr, /\r\n\r\ndata\r\n/);
+  assert.equal(result.id, 555);
+});
+
+test('uploadFile unwraps the array the endpoint returns to a single File object', async () => {
+  const created = [{ id: 555, fileName: 'report.md' }];
+  const client = makeClient(mockFetch(created), NO_LOCAL_CONFIG);
+  process.env.ZENKIT_API_KEY = 'test-key';
+  const result = await client.uploadFile('42', '7', { buffer: Buffer.from('x'), fileName: 'report.md' });
+  assert.equal(result.id, 555);
+  assert.equal(result.fileName, 'report.md');
+});
+
+test('addAttachment uploads then links file to entry, preserving existing files', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'zenkit-'));
+  const filePath = join(tmp, 'note.md');
+  writeFileSync(filePath, '# hi');
+
+  const elements = [
+    { id: 7, uuid: 'files-uuid', resourceRole: 'files', elementcategory: 15, name: 'Attachments' },
+    { id: 8, uuid: 'title-uuid', elementcategory: 1, isPrimary: true, name: 'Title' },
+  ];
+  const uploaded = { id: 555, uuid: 'file-uuid', fileName: 'note.md', size: 4, mimetype: 'text/markdown' };
+  const entry = { id: 5, 'files-uuid_files': [111] };
+
+  const calls = [];
+  const fetchFn = async (url, opts) => {
+    calls.push({ url, method: opts.method, body: opts.body });
+    let body;
+    if (url.endsWith('/elements')) body = elements;
+    else if (url.endsWith('/files')) body = uploaded;
+    else if (opts.method === 'GET') body = entry;      // getItem
+    else body = { id: 5 };                              // updateItem (PUT)
+    return { ok: true, status: 200, json: async () => body, text: async () => '' };
+  };
+  process.env.ZENKIT_API_KEY = 'test-key';
+  const client = makeClient(fetchFn, NO_LOCAL_CONFIG);
+  const result = await client.addAttachment('42', '5', filePath);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.file.id, 555);
+  assert.equal(result.elementUuid, 'files-uuid');
+  assert.deepEqual(result.files, [111, 555]);
+
+  const put = calls.find(c => c.method === 'PUT');
+  assert.equal(put.url, 'https://zenkit.com/api/v1/lists/42/entries/5');
+  assert.deepEqual(JSON.parse(put.body), { 'files-uuid_files': [111, 555] });
+
+  const upload = calls.find(c => c.url.endsWith('/files'));
+  assert.equal(upload.url, 'https://zenkit.com/api/v1/lists/42/elements/7/files');
 });
 
 // --- File I/O helpers ---
