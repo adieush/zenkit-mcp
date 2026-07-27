@@ -2,7 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import nodeFetch from 'node-fetch';
-import { makeClient, listWorkspaces, listItems, getItem, createItem, updateItem, deleteItem, listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements, addComment, deleteComment, updateComment, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, LOCAL_CONFIG_PATH } from './zenkit.js';
+import { makeClient, listWorkspaces, listItems, getItem, createItem, updateItem, deleteItem, listWorkspaceMembers, listCollectionMembers, getCurrentUser, listMyItems, getListElements, addComment, deleteComment, updateComment, addAttachment, readLocalConfig, writeLocalConfig, readProjectConfig, writeProjectConfig, LOCAL_CONFIG_PATH } from './zenkit.js';
 
 async function resolveCollection(listIdOrShortId) {
   const workspaces = await listWorkspaces();
@@ -186,6 +186,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'add_attachment',
+      description: 'Attach a file from disk to a ticket. Single-call operation: it finds the collection\'s Attachments/files element automatically, uploads the file, and links it to the entry\'s files field, keeping any files already attached. Provide listId, entryId, and an absolute filePath. mimetype is guessed from the extension.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'Collection (list) ID' },
+          entryId: { type: 'string', description: 'Entry (ticket) ID' },
+          filePath: { type: 'string', description: 'Absolute path to the file to attach' },
+        },
+        required: ['listId', 'entryId', 'filePath'],
+      },
+    },
+    {
       name: 'init_zenkit',
       description: 'One-time setup: reads apiKey from zenkit.local.json in the server directory, calls Zenkit API to fetch user profile, and saves userId, displayname, username back to zenkit.local.json. Must be run once before using any other tools. Do NOT pass apiKey as argument — user should put it in zenkit.local.json manually first.',
       inputSchema: {
@@ -301,6 +314,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'add_comment':            result = await addComment(args.listId, args.entryId, args.message); break;
       case 'delete_comment':         result = await deleteComment(args.listId, args.commentId); break;
       case 'update_comment':         result = await updateComment(args.listId, args.commentId, args.message); break;
+      case 'add_attachment':   result = await addAttachment(args.listId, args.entryId, args.filePath); break;
 
       case 'init_zenkit': {
         const local = readLocalConfig();
